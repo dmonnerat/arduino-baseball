@@ -2,14 +2,17 @@
  * Arduino Baseball
  * Author: David Monnerat (www.davidmonnerat.com)
  * 12/23/2015
- * Rev 0.1
  * 
+ * Rev 0.1
  * This was my first custom use of the Arduino kit. I told my spn that I would take him to the 
  * baseball field after school to hit some balls. That was before we stepped outside in to the rain. 
  * Instead of giving up, I built this baseball game with the Arduino microcontroller, and LCD, and some LED lights. The 
  * "pitch" is the LED lights moving to green. Push the button to swing. Weighted average for hit vs foul vs triple vs 
  * double vs out. Keeps score, changes sides. Of course, he figured it out and mostly hits home runs...
  *
+ * Rev 0.2
+ * Added interrupt (button on pin 3) to see if batter swings before green; if so, strike
+ * 
  * To Do:
  * Stop the game after 9 innings (or extra innings if there is a tie)
  * Smooth out the having to hit the button after a hit, or indicate it better 
@@ -18,9 +21,11 @@
 #include <LiquidCrystal.h>
 
 /* Layout of the pins */
-LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
-const int buttonPin = 13; //the button
+LiquidCrystal lcd(12, 11, 5, 4, 13, 2);
+const int buttonPin = 3; //the button
 int buttonState = 0; //the state of the button
+//using this interrupt to see if the person hit the button too soon
+boolean isHit = false;
 
 /*
  * Baseball Variables
@@ -50,6 +55,8 @@ void setup() {
 
   // start a new game
   resetGame();
+
+  attachInterrupt(digitalPinToInterrupt(buttonPin), blink, CHANGE);
 }
 
 void loop() {
@@ -92,6 +99,8 @@ void batterUp()
   lcd.setCursor(0, 0);
   lcd.print("Ready...");
 
+  isHit = false;
+  
   for (int x = 10; x > 6; x--)
   {
     delay(random(500, 1500));
@@ -101,29 +110,64 @@ void batterUp()
 
   unsigned long startTime = millis();
   unsigned long interval = 0;
+  unsigned long endTime = 0;
 
   lcd.setCursor(8, 0);
   lcd.print("SWING!");
 
-  while (true)
+  if (isHit)
   {
-    buttonState = digitalRead(buttonPin);
-    if (buttonState == LOW)
+    //batter hit button before green
+    //turn off green light
+    digitalWrite(7, LOW);
+    //end time will be 0 so that will get caught processing hit
+  }
+  else
+  {
+    while (true)
     {
-      //button not pressed
-    }
-    else
-    {
-      //button pressed
-      digitalWrite(7, LOW);
-      unsigned long endTime = millis();
-      interval = endTime - startTime;
-      break;
+      buttonState = digitalRead(buttonPin);
+      if (buttonState == LOW)
+      {
+        //button not pressed
+      }
+      else
+      {
+        //button pressed
+        digitalWrite(7, LOW);
+        endTime = millis();
+        interval = endTime - startTime;
+        break;
+      }
     }
   }
-
+  
   //process hit
-  if (interval > 1000) {
+  //strike if took longer than 1 second or swung before green
+  if (endTime == 0)
+  {
+    //strike
+    strikes++;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Swung Too Early!");
+    lcd.setCursor(3, 1);
+    lcd.print("STRIKE ");
+    lcd.setCursor(10, 1);
+    lcd.print(strikes);
+    lcd.setCursor(12, 1);
+    lcd.print("!");
+    delay(2000);
+
+    if (strikes >= 3)
+    {
+      lcd.setCursor(6, 1);
+      lcd.print("OUT!");
+      outs++;
+    }
+    
+  }
+  else if (interval > 1000) {
     //strike
     strikes++;
     lcd.clear();
@@ -524,5 +568,9 @@ void emptyBases() {
   firstBase = false;
   secondBase = false;
   thirdBase = false;
+}
+
+void blink() {
+  isHit = true;
 }
 
